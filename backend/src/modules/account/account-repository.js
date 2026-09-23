@@ -4,23 +4,29 @@ const changePassword = async (payload, client) => {
     const { userId, hashedPassword } = payload;
     const query = `
         UPDATE users
-        SET password = $1
+        SET password = $1, password_setup_nonce = NULL, updated_dt = NOW()
         WHERE id = $2
     `;
     const queryParams = [hashedPassword, userId];
     await client.query(query, queryParams);
 }
 
+const findUserByIdForUpdate = async (id, client) => {
+    const query = "SELECT * FROM users WHERE id = $1 FOR UPDATE";
+    const { rows } = await client.query(query, [id]);
+    return rows[0];
+}
+
 const getUserRoleNameByUserId = async (id, client) => {
     const query = `
-        SELECT lower(t1.name) AS name
+        SELECT lower(t1.name) AS name, t1.id AS "roleId"
         FROM roles t1
         JOIN users t2 ON t1.id = t2.role_id
         WHERE t2.id = $1
     `;
     const queryParams = [id];
     const { rows } = await client.query(query, queryParams);
-    return rows[0].name;
+    return rows[0];
 }
 
 const getStudentAccountDetail = async (userId) => {
@@ -92,6 +98,7 @@ const getStaffAccountDetail = async (userId, userRoleId) => {
 
 module.exports = {
     changePassword,
+    findUserByIdForUpdate,
     getUserRoleNameByUserId,
     getStudentAccountDetail,
     getStaffAccountDetail

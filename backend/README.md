@@ -5,7 +5,7 @@ A robust Node.js REST API built with Express.js and PostgreSQL for managing scho
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v16 or higher)
+- Node.js (v18 or higher)
 - PostgreSQL (v12 or higher)
 - npm or yarn
 
@@ -25,6 +25,12 @@ psql -d school_mgmt -f ../seed_db/seed-db.sql
 
 # Start the server
 npm start
+```
+
+For an existing database, apply migrations instead of rerunning the bootstrap scripts:
+
+```bash
+psql -v ON_ERROR_STOP=1 -d school_mgmt -f ../seed_db/migrations/001_complete_student_crud.sql
 ```
 
 ### Environment Configuration
@@ -176,14 +182,13 @@ Refresh access token using refresh token.
 ### Student Management Endpoints
 
 #### GET /students
-Get all students with pagination and filtering.
+Get all students with optional filtering. An empty result returns `{ "students": [] }`.
 ```
 Query Parameters:
-- page: Page number (default: 1)
-- limit: Items per page (default: 10)
-- search: Search term
+- name: Case-insensitive partial name match
 - class: Filter by class
 - section: Filter by section
+- roll: Filter by roll number
 ```
 
 #### POST /students
@@ -191,22 +196,53 @@ Create a new student.
 ```json
 {
   "name": "John Doe",
-  "email": "john@example.com",
-  "class_name": "Grade 10",
-  "section_name": "A",
-  "roll": 101,
+  "gender": "Male",
   "dob": "2005-01-15",
-  "father_name": "Robert Doe",
-  "father_phone": "+1234567890"
+  "phone": "+1234567890",
+  "email": "john@example.com",
+  "class": "Grade 10",
+  "section": "A",
+  "roll": "101",
+  "admissionDate": "2025-09-01",
+  "fatherName": "Robert Doe",
+  "fatherPhone": "+1234567890",
+  "motherName": "",
+  "motherPhone": "",
+  "guardianName": "Robert Doe",
+  "guardianPhone": "+1234567890",
+  "relationOfGuardian": "Father",
+  "currentAddress": "Current address",
+  "permanentAddress": "Permanent address"
 }
 ```
 
+New student accounts are created inactive. After email verification and password setup, an authorized reviewer enables access through `POST /students/:id/status`.
+
+#### GET /students/:id
+Get one student by ID. Returns `404` when the ID does not belong to a student.
+
 #### PUT /students/:id
-Update student information.
+Replace student information. All fields from the create payload are required. System access is intentionally changed only through `POST /students/:id/status` so the reviewer and review time are audited.
 ```json
 {
-  "name": "John Smith",
-  "phone": "+1234567891"
+  "name": "John Doe",
+  "gender": "Male",
+  "dob": "2005-01-15",
+  "phone": "+1234567891",
+  "email": "john@example.com",
+  "class": "Grade 10",
+  "section": "A",
+  "roll": "101",
+  "admissionDate": "2025-09-01",
+  "fatherName": "Robert Doe",
+  "fatherPhone": "+1234567890",
+  "motherName": "",
+  "motherPhone": "",
+  "guardianName": "Robert Doe",
+  "guardianPhone": "+1234567890",
+  "relationOfGuardian": "Father",
+  "currentAddress": "Current address",
+  "permanentAddress": "Permanent address"
 }
 ```
 
@@ -215,6 +251,15 @@ Delete a student record.
 ```json
 {
   "message": "Student deleted successfully"
+}
+```
+
+#### POST /students/:id/status
+Enable or disable student system access.
+
+```json
+{
+  "status": true
 }
 ```
 

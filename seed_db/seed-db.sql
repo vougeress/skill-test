@@ -81,6 +81,7 @@ VALUES
 ('Get student detail', '/api/v1/students/:id', NULL, 'students_parent', NULL, 'api', 'GET'),
 ('Handle student status', '/api/v1/students/:id/status', NULL, 'students_parent', NULL, 'api', 'POST'),
 ('Update student detail', '/api/v1/students/:id', NULL, 'students_parent', NULL, 'api', 'PUT'),
+('Delete student', '/api/v1/students/:id', NULL, 'students_parent', NULL, 'api', 'DELETE'),
 -- end student
 
 -- start communication

@@ -17,6 +17,7 @@ import { ParentsAndGuardianInformation } from '../forms/parents-and-guardian-inf
 import { AddressInformation } from '../forms/address-information';
 import { OtherInformation } from '../forms/other-information';
 import { getErrorMsg } from '@/utils/helpers/get-error-message';
+import { API_DATE_FORMAT, getFormattedDate } from '@/utils/helpers/date';
 import { StudentProps } from '../../types';
 import { studentFormInitialState } from '../../reducer/student-form-reducer';
 import { StudentSchema } from '../../types/student-schema';
@@ -62,7 +63,13 @@ export const StudentAccountEdit: React.FC<StudentAccountEditProps> = ({
 
   const onUpdate = async (data: StudentProps) => {
     try {
-      const result = await updateStudent({ id: Number(id!), ...data }).unwrap();
+      const { dob, admissionDate, ...rest } = data;
+      const payload = {
+        ...rest,
+        dob: getFormattedDate(dob, API_DATE_FORMAT),
+        admissionDate: getFormattedDate(admissionDate, API_DATE_FORMAT)
+      };
+      const result = await updateStudent({ id: Number(id!), ...payload }).unwrap();
       toast.info(result.message);
       navigate(redirectPath);
     } catch (error) {

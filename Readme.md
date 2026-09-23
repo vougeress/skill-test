@@ -17,7 +17,7 @@ skill-test/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v16 or higher)
+- Node.js (v18 or higher)
 - PostgreSQL (v12 or higher)
 - npm or yarn
 
@@ -246,9 +246,11 @@ backend/src/
 
 ### Student Management
 - `GET /api/v1/students` - List all students
+- `GET /api/v1/students/:id` - Get student details
 - `POST /api/v1/students` - Create new student
 - `PUT /api/v1/students/:id` - Update student
 - `DELETE /api/v1/students/:id` - Delete student
+- `POST /api/v1/students/:id/status` - Enable or disable student access
 
 ### Notice Management
 - `GET /api/v1/notices` - List notices

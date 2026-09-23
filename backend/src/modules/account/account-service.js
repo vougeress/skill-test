@@ -10,10 +10,12 @@ const {
 } = require("../../utils");
 const {
   changePassword,
+  findUserByIdForUpdate,
   getUserRoleNameByUserId,
   getStudentAccountDetail,
   getStaffAccountDetail,
 } = require("./account-repository");
+const { deleteOldRefreshTokenByUserId } = require("../auth/auth-repository");
 const { insertRefreshToken, findUserById } = require("../../shared/repository");
 
 const processPasswordChange = async (payload) => {
@@ -22,7 +24,7 @@ const processPasswordChange = async (payload) => {
     const { userId, oldPassword, newPassword } = payload;
     await client.query("BEGIN");
 
-    const user = await findUserById(userId);
+    const user = await findUserByIdForUpdate(userId, client);
     if (!user) {
       throw new ApiError(404, "User does not exist");
     }
@@ -30,23 +32,25 @@ const processPasswordChange = async (payload) => {
     const { password: passwordFromDB } = user;
     await verifyPassword(passwordFromDB, oldPassword);
 
-    const roleName = await getUserRoleNameByUserId(userId, client);
-    if (!roleName) {
+    const role = await getUserRoleNameByUserId(userId, client);
+    if (!role) {
       throw new ApiError(404, "Role does not exist for user");
     }
+    const { name: roleName, roleId } = role;
 
     const hashedPassword = await generateHashedPassword(newPassword);
     await changePassword({ userId, hashedPassword }, client);
+    await deleteOldRefreshTokenByUserId(userId, client);
 
     const csrfToken = uuidV4();
     const csrfHmacHash = generateCsrfHmacHash(csrfToken);
     const accessToken = generateToken(
-      { id: userId, role: roleName, csrf_hmac: csrfHmacHash },
+      { id: userId, role: roleName, roleId, csrf_hmac: csrfHmacHash },
       env.JWT_ACCESS_TOKEN_SECRET,
       env.JWT_ACCESS_TOKEN_TIME_IN_MS
     );
     const refreshToken = generateToken(
-      { id: userId },
+      { id: userId, role: roleName, roleId },
       env.JWT_REFRESH_TOKEN_SECRET,
       env.JWT_REFRESH_TOKEN_TIME_IN_MS
     );

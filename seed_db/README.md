@@ -12,6 +12,7 @@ This directory contains the database schema and seed data for the Student Manage
 ### Files
 - `tables.sql` - Complete database schema with tables, functions, and constraints
 - `seed-db.sql` - Initial data for system setup and testing
+- `migrations/` - Idempotent updates for databases that have already been initialized
 
 ## 🚀 Quick Setup
 
@@ -33,6 +34,14 @@ psql -d school_mgmt -f seed-db.sql
 
 # Verify setup
 psql -d school_mgmt -c "SELECT COUNT(*) FROM users;"
+```
+
+### Updating an Existing Database
+
+Apply migration files in filename order. Do not rerun `tables.sql` on an existing database.
+
+```bash
+psql -v ON_ERROR_STOP=1 -d school_mgmt -f migrations/001_complete_student_crud.sql
 ```
 
 ### Alternative Setup (with custom database name)
@@ -309,4 +318,4 @@ SELECT COUNT(*) FROM users WHERE role_id NOT IN (SELECT id FROM roles);
 
 ---
 
-For application setup, see [../README.md](../README.md) 
+For application setup, see [../README.md](../README.md)

@@ -8,7 +8,7 @@ const handlePasswordSetupToken = (req, res, next) => {
   }
 
   const decodeToken = verifyToken(token, env.PASSWORD_SETUP_TOKEN_SECRET);
-  if (!decodeToken || !decodeToken.id) {
+  if (!decodeToken || !decodeToken.id || !decodeToken.email || !decodeToken.nonce) {
     throw new ApiError(400, "Invalid token");
   }
 

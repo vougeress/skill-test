@@ -35,15 +35,15 @@ const handleTokenRefresh = asyncHandler(async (req, res) => {
 });
 
 const handleAccountEmailVerify = asyncHandler(async (req, res) => {
-    const { id } = req.user;
-    const message = await processAccountEmailVerify(id);
+    const { id, email } = req.user;
+    const message = await processAccountEmailVerify(id, email);
     res.json(message);
 });
 
 const handleAccountPasswordSetup = asyncHandler(async (req, res) => {
-    const { id: userId } = req.user;
+    const { id: userId, email: tokenEmail, nonce } = req.user;
     const { username: userEmail, password } = req.body;
-    const message = await processPasswordSetup({ userId, userEmail, password });
+    const message = await processPasswordSetup({ userId, userEmail, tokenEmail, nonce, password });
     res.json(message);
 });
 

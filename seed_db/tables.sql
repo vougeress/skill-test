@@ -38,10 +38,11 @@ CREATE TABLE users(
     updated_dt TIMESTAMP DEFAULT NULL,
     leave_policy_id INTEGER REFERENCES leave_policies(id) DEFAULT NULL,
     is_active BOOLEAN DEFAULT false,
-    reporter_id INTEGER DEFAULT NULL,
+    reporter_id INTEGER REFERENCES users(id) ON DELETE SET NULL DEFAULT NULL,
     status_last_reviewed_dt TIMESTAMP DEFAULT NULL,
     status_last_reviewer_id INTEGER REFERENCES users(id) DEFAULT NULL,
-    is_email_verified BOOLEAN DEFAULT false
+    is_email_verified BOOLEAN DEFAULT false,
+    password_setup_nonce TEXT DEFAULT NULL
 );
 
 CREATE TABLE user_profiles(
@@ -321,13 +322,14 @@ DECLARE
     _guardianName TEXT;
     _guardianPhone TEXT;
     _relationOfGuardian TEXT;
-    _systemAccess BOOLEAN;
+    _emailChanged BOOLEAN;
     _className TEXT;
     _sectionName TEXT;
     _admissionDt DATE;
     _roll INTEGER;
+    _affectedRows INTEGER;
 BEGIN
-    _roleId = 3;
+    SELECT id INTO _roleId FROM roles WHERE name ILIKE 'student';
     _userId := COALESCE((data ->>'userId')::INTEGER, NULL);
     _name := COALESCE(data->>'name', NULL);
     _gender := COALESCE(data->>'gender', NULL);
@@ -343,7 +345,6 @@ BEGIN
     _guardianName := COALESCE(data->>'guardianName', NULL);
     _guardianPhone := COALESCE(data->>'guardianPhone', NULL);
     _relationOfGuardian := COALESCE(data->>'relationOfGuardian', NULL);
-    _systemAccess := COALESCE((data->>'systemAccess')::BOOLEAN, NULL);
     _className := COALESCE(data->>'class', NULL);
     _sectionName := COALESCE(data->>'section', NULL);
     _admissionDt := COALESCE((data->>'admissionDate')::DATE, NULL);
@@ -355,25 +356,36 @@ BEGIN
         _operationType := 'update';
     END IF;
 
+    IF _roleId IS NULL THEN
+        RETURN QUERY
+            SELECT _userId, false, 'Student role not configured', NULL::TEXT;
+        RETURN;
+    END IF;
+
     SELECT teacher_id
     FROM class_teachers
     WHERE class_name = _className AND section_name = _sectionName
     INTO _reporterId;
 
     IF _reporterId IS NULL THEN
-        SELECT id from users WHERE role_id = 1 ORDER BY id ASC LIMIT 1 INTO _reporterId;
+        SELECT u.id
+        FROM users u
+        JOIN roles r ON r.id = u.role_id
+        WHERE r.name ILIKE 'admin'
+        ORDER BY u.id ASC
+        LIMIT 1
+        INTO _reporterId;
     END IF;
 
-    IF NOT EXISTS(SELECT 1 FROM users WHERE id = _userId) THEN
-
+    IF _operationType = 'add' THEN
         IF EXISTS(SELECT 1 FROM users WHERE email = _email) THEN
-        RETURN QUERY
-            SELECT NULL::INTEGER, false, 'Email already exists', NULL::TEXT;
-        RETURN;
+            RETURN QUERY
+                SELECT NULL::INTEGER, false, 'Email already exists', NULL::TEXT;
+            RETURN;
         END IF;
 
-        INSERT INTO users (name,email,role_id,created_dt,reporter_id)
-        VALUES (_name,_email,_roleId,now(),_reporterId) RETURNING id INTO _userId;
+        INSERT INTO users (name,email,role_id,created_dt,reporter_id,is_active)
+        VALUES (_name,_email,_roleId,now(),_reporterId,false) RETURNING id INTO _userId;
 
         INSERT INTO user_profiles
         (user_id,gender,phone,dob,admission_dt,class_name,section_name,roll,current_address,permanent_address,father_name,father_phone,mother_name,mother_phone,guardian_name,guardian_phone,relation_of_guardian)
@@ -385,16 +397,58 @@ BEGIN
         RETURN;
     END IF;
 
+    PERFORM 1
+    FROM users
+    WHERE id = _userId AND role_id = _roleId
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN QUERY
+            SELECT _userId, false, 'Student not found', NULL::TEXT;
+        RETURN;
+    END IF;
+
+    PERFORM 1
+    FROM user_profiles
+    WHERE user_id = _userId
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN QUERY
+            SELECT _userId, false, 'Student profile not found', NULL::TEXT;
+        RETURN;
+    END IF;
+
+    SELECT email IS DISTINCT FROM _email
+    FROM users
+    WHERE id = _userId
+    INTO _emailChanged;
+
+    IF EXISTS(
+        SELECT 1 FROM users WHERE email = _email AND id != _userId
+    ) THEN
+        RETURN QUERY
+            SELECT _userId, false, 'Email already exists', NULL::TEXT;
+        RETURN;
+    END IF;
 
     --update user tables
     UPDATE users
     SET
         name = _name,
         email = _email,
-        role_id = _roleId,
-        is_active = _systemAccess,
+        password = CASE WHEN _emailChanged THEN NULL ELSE password END,
+        password_setup_nonce = CASE WHEN _emailChanged THEN NULL ELSE password_setup_nonce END,
+        is_active = CASE WHEN _emailChanged THEN false ELSE is_active END,
+        is_email_verified = CASE WHEN _emailChanged THEN false ELSE is_email_verified END,
+        reporter_id = _reporterId,
         updated_dt = now()
-    WHERE id = _userId;
+    WHERE id = _userId AND role_id = _roleId;
+
+    GET DIAGNOSTICS _affectedRows = ROW_COUNT;
+    IF _affectedRows != 1 THEN
+        RAISE EXCEPTION 'Unable to update student account';
+    END IF;
 
     UPDATE user_profiles
     SET
@@ -416,9 +470,28 @@ BEGIN
         relation_of_guardian = _relationOfGuardian
     WHERE user_id = _userId;
 
+    GET DIAGNOSTICS _affectedRows = ROW_COUNT;
+    IF _affectedRows != 1 THEN
+        RAISE EXCEPTION 'Unable to update student profile';
+    END IF;
+
+    IF _emailChanged THEN
+        DELETE FROM user_refresh_tokens WHERE user_id = _userId;
+    END IF;
+
     RETURN QUERY
-        SELECT _userId, true , 'Student updated successfully', NULL;
+        SELECT
+            _userId,
+            true,
+            'Student updated successfully',
+            CASE WHEN _emailChanged THEN 'email_changed' ELSE NULL::TEXT END;
 EXCEPTION
+    WHEN unique_violation THEN
+        RETURN QUERY
+            SELECT _userId::INTEGER, false, 'Email already exists', SQLERRM;
+    WHEN foreign_key_violation THEN
+        RETURN QUERY
+            SELECT _userId::INTEGER, false, 'Invalid class or section', SQLERRM;
     WHEN OTHERS THEN
         RETURN QUERY
             SELECT _userId::INTEGER, false, 'Unable to ' || _operationType || ' student', SQLERRM;

@@ -3,9 +3,9 @@ const { generateToken } = require("./jwt-handle");
 const { sendMail } = require("./send-email");
 const { pwdSetupTemplate } = require("../templates");
 
-const sendPasswordSetupEmail = async ({ userId, userEmail }) => {
+const sendPasswordSetupEmail = async ({ userId, userEmail, nonce }) => {
   const pwdToken = generateToken(
-    { id: userId },
+    { id: userId, email: userEmail, nonce },
     env.PASSWORD_SETUP_TOKEN_SECRET,
     env.PASSWORD_SETUP_TOKEN_TIME_IN_MS
   );

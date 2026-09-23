@@ -1,10 +1,14 @@
 const validateRequest = (schema) => (req, res, next) => {
     try {
-        schema.parse({
+        const validatedRequest = schema.parse({
             body: req.body,
             query: req.query,
             params: req.params
         });
+
+        if (validatedRequest.body) req.body = validatedRequest.body;
+        if (validatedRequest.query) req.query = validatedRequest.query;
+        if (validatedRequest.params) req.params = validatedRequest.params;
 
         next();
     } catch (error) {

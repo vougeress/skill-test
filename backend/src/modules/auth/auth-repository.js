@@ -2,7 +2,9 @@ const { db } = require("../../config");
 const { processDBRequest } = require("../../utils");
 
 const findUserByUsername = async (username, client) => {
-    const query = "SELECT * FROM users WHERE email = $1";
+    // Lock the user before refresh-token rows so login and session revocation
+    // always acquire locks in the same order.
+    const query = "SELECT * FROM users WHERE email = $1 FOR UPDATE";
     const { rows } = await client.query(query, [username]);
     return rows[0];
 };
@@ -74,21 +76,21 @@ const deleteOldRefreshTokenByUserId = async (userId, client) => {
     await client.query(query, queryParams);
 }
 
-const isEmailVerified = async (id) => {
-    const query = 'SELECT is_email_verified FROM users WHERE id = $1';
-    const queryParams = [id];
+const isEmailVerified = async (id, email) => {
+    const query = 'SELECT is_email_verified FROM users WHERE id = $1 AND email = $2';
+    const queryParams = [id, email];
     const { rows } = await processDBRequest({ query, queryParams });
-    return rows[0].is_email_verified;
+    return rows[0]?.is_email_verified;
 }
 
-const verifyAccountEmail = async (id) => {
+const verifyAccountEmail = async (id, email) => {
     const query = `
         UPDATE users
         SET is_email_verified = true
-        WHERE id = $1
+        WHERE id = $1 AND email = $2 AND is_email_verified = false
         RETURNING *
     `;
-    const queryParams = [id];
+    const queryParams = [id, email];
     const { rows } = await processDBRequest({ query, queryParams });
     return rows[0];
 }
@@ -101,13 +103,38 @@ const doesEmailExist = async (id, email) => {
 }
 
 const setupUserPassword = async (payload) => {
-    const { userId, userEmail, password } = payload;
+    const { userId, userEmail, nonce, password } = payload;
+    const query = `
+        WITH updated_user AS (
+            UPDATE users
+            SET
+                password = $1,
+                password_setup_nonce = NULL,
+                updated_dt = NOW()
+            WHERE id = $2
+              AND email = $3
+              AND is_email_verified = true
+              AND password_setup_nonce = $4
+            RETURNING id
+        ), deleted_sessions AS (
+            DELETE FROM user_refresh_tokens
+            WHERE user_id IN (SELECT id FROM updated_user)
+            RETURNING id
+        )
+        SELECT COUNT(*)::INTEGER AS "updatedCount" FROM updated_user
+    `;
+    const queryParams = [password, userId, userEmail, nonce];
+    const { rows } = await processDBRequest({ query, queryParams });
+    return rows[0]?.updatedCount || 0;
+}
+
+const setPasswordSetupNonce = async ({ userId, userEmail, nonce }) => {
     const query = `
         UPDATE users
-        SET password = $1, is_active = true
-        WHERE id = $2 AND email = $3
+        SET password_setup_nonce = $1
+        WHERE id = $2 AND email = $3 AND is_email_verified = true
     `;
-    const queryParams = [password, userId, userEmail];
+    const queryParams = [nonce, userId, userEmail];
     const { rowCount } = await processDBRequest({ query, queryParams });
     return rowCount;
 }
@@ -125,4 +152,5 @@ module.exports = {
     verifyAccountEmail,
     doesEmailExist,
     setupUserPassword,
+    setPasswordSetupNonce,
 };
